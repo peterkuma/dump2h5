@@ -391,7 +391,7 @@ main(int argc, char *argv[])
 			import(outfile, tmp, append);
 			free(tmp);
 			append = 1;
-	        }
+		}
 		closedir(dirp);
 	}
 
