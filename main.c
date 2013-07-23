@@ -280,7 +280,7 @@ import(const char *outfile, const char *filename, int append)
 	/* Unlimited first dimension. */
 	if (dims[0] == -1 && size % (block_size[0]*dsize) != 0) {
 		error("%s: Expected size to be multiple of %zu, but %zu found\n",
-		    filename, block_size[0], size);
+		    filename, block_size[0]*dsize, size);
 	}
 	if (dims[0] != -1) {
 		expected_size = block_size[0]*dims[0]*dsize;
