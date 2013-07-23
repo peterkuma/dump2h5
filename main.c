@@ -310,7 +310,9 @@ import(const char *outfile, const char *filename, int append)
 	 */
 	hid = -1;
 	/* Try to open the file. */
-	if (append) hid = H5Fopen(outfile, H5P_DEFAULT, H5F_ACC_RDWR);
+	if (append) {
+		hid = H5Fopen(outfile, H5F_ACC_RDWR, H5P_DEFAULT);
+	}
 	if (hid < 0) {
 		hid = H5Fcreate(outfile, H5F_ACC_TRUNC, H5P_DEFAULT, \
 		    H5P_DEFAULT);
