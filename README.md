@@ -1,7 +1,8 @@
 dump2h5
 =======
 
-Import dump into HDF5 data file.
+Convert [nc_dump](https://github.com/peterkuma/nc_dump)
+files to NetCDF/HDF5 data files.
 
 Dump is a binary file containing raw data values, accompanied by a set of
 metadata files describing data dimensions, type, and attributes.
