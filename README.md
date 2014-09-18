@@ -74,8 +74,3 @@ Data type can be one of:
 
 File `<dataset>` contains binary raw data packed without padding. Big endian
 byte order is assumed.
-
-Bugs
-----
-
-Please report bugs to Peter Kuma <peterkuma@waveland.org>.
