@@ -28,7 +28,7 @@ Usage
 
 To import dataset `dataset` into `mydata.nc`, do:
 
-    dump2hdf -o mydata.nc dataset
+    dump2h5 -o mydata.nc dataset
 
 This requires files `dataset`, `dataset.dims` and `dataset.dtype` to be present
 (see description of dump format below). Any existing file `mydata.nc`
@@ -36,11 +36,11 @@ will be truncated before import.
 
 To append to an existing output file, use the -a switch:
 
-    dump2hdf -a -o mydata.nc dump
+    dump2h5 -a -o mydata.nc dump
 
 To import all datasets in directory `dump` into `mydata.nc`, do:
 
-    dump2hdf -o mydata.nc dump
+    dump2h5 -o mydata.nc dump
 
 Note that subdirectories are not traversed.
 
