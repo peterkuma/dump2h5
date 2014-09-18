@@ -15,17 +15,25 @@
 #include <ctype.h>
 #include <sys/types.h>
 #include <dirent.h>
+#include <byteswap.h>
 
 #include <hdf5.h>
 #include <hdf5_hl.h>
+#include <netcdf.h>
 
 #define MAXRANK 7
+#define MAX_DIMNAME 512
 #define BUFSIZE 512
 #define DEBUG
 
 enum dtype {
 	FLOAT32,
 	FLOAT64
+};
+
+struct dim {
+	ssize_t size;
+	char name[MAX_DIMNAME+1];
 };
 
 #define error(...) ({\
@@ -36,6 +44,8 @@ exit(1);})
 #define hdferror(...) ({\
 H5Eprint(H5E_DEFAULT, stderr);\
 error(__VA_ARGS__);})
+
+#define ncerror(filename, err) (error("%s: %s\n", filename, nc_strerror(err)))
 
 #ifdef DEBUG
 #define debug(...) (fprintf(stderr, __VA_ARGS__))
@@ -127,42 +137,6 @@ pathjoin(const char *components[], int n)
 	return path;
 }
 
-int
-read_dims(const char *filename, int dims[])
-{
-	int rank;
-	FILE *fp;
-	int i, n, dim;
-
-	fp = fopen(filename, "r");
-	if (fp == NULL) error("%s: %s\n", filename, strerror(errno));
-	rank = 0;
-	while (rank < MAXRANK) {
-		n = fscanf(fp, "%d", &dim);
-		if (n == EOF) break;
-		if (n != 1) error("%s: Invalid dimension\n", filename);
-		dims[rank++] = dim;
-	}
-	fclose(fp);
-
-	/*
-	 * Check dimensions.
-	 */
-	for (i = 0; i < rank; i++) {
-		dim = dims[i];
-		if (dim == -1 && i != 0) {
-			error("%s: Only the first dimension can be unlimited\n",
-			    filename);
-		}
-		if (dim < -1) {
-			error("%s: Invalid dimension size %d\n",
-			    filename, dim);
-		}
-	}
-	
-	return rank;
-}
-
 char *
 trim_inplace(char *s)
 {
@@ -177,6 +151,62 @@ trim_inplace(char *s)
 	while (p >= new && isspace(*p))
 		*p = '\0';
 	return new;
+}
+
+int
+endswith(const char *s, const char *suffix)
+{
+	if (*suffix == '\0')
+		return 1; /* Everything ends with "". */
+	return strstr(s, suffix) == s + strlen(s) - strlen(suffix);
+}
+
+int
+read_dims(const char *filename, struct dim dims[])
+{
+	int rank = 0;
+	FILE *fp = NULL;
+	ssize_t size = 0;
+	char buf[BUFSIZE];
+	char *name = NULL;
+	int i, n;
+
+	fp = fopen(filename, "r");
+	if (fp == NULL) error("%s: %s\n", filename, strerror(errno));
+	rank = 0;
+	while (rank < MAXRANK) {
+		n = fscanf(fp, "%zd", &size);
+		if (n == EOF) break;
+		if (n != 1) error("%s: Invalid dimension\n", filename);
+		name = buf;
+		*name = '\0';
+		if (NULL != fgets(buf, BUFSIZE, fp)) {
+			name = trim_inplace(buf);
+			if (strlen(name) > MAX_DIMNAME)
+				error("Dimension name too long: %s\n", name);
+		}
+		dims[rank].size = size;
+		strlcpy(dims[rank].name, name, sizeof(dims[rank].name));
+		rank++;
+	}
+	fclose(fp);
+
+	/*
+	 * Check dimensions.
+	 */
+	for (i = 0; i < rank; i++) {
+		size = dims[i].size;
+		if (size == -1 && i != 0) {
+			error("%s: Only the first dimension can be unlimited\n",
+			    filename);
+		}
+		if (size < -1) {
+			error("%s: Invalid dimension size %zd\n",
+			    filename, size);
+		}
+	}
+	
+	return rank;
 }
 
 enum dtype
@@ -215,6 +245,123 @@ dsizeof(enum dtype dtype) {
 }
 
 void
+swap_endianness(uint8_t *data, size_t size, size_t dsize)
+{
+	uint8_t *p;
+	switch(dsize) {
+	case 2:
+		for (p = data; p + 2 <= data + size; p += dsize)
+			*((uint16_t *) p) = bswap_16(*((uint16_t *) p));
+		break;
+	case 4:
+		for (p = data; p + 4 <= data + size; p += dsize)
+			*((uint32_t *) p) = bswap_32(*((uint32_t *) p));
+		break;
+	case 8:
+		for (p = data; p + 8 <= data + size; p += dsize)
+			*((uint64_t *) p) = bswap_64(*((uint64_t *) p));
+		break;
+	default:
+		error("Can't convert endianness of %zu-byte data type\n", dsize);
+	}
+}
+
+void
+hdfwrite(const char *outfile, const char *dataset, \
+    int rank, struct dim dims[], enum dtype dtype, const void *data, int append)
+{
+	int i;
+	hid_t hid;
+	hsize_t hdims[MAXRANK];
+	herr_t status;
+
+	/*
+	 * Turn off error handling.
+	 */
+	H5Eset_auto(H5E_DEFAULT, NULL, NULL);
+
+	/*
+	 * Open or create the file.
+	 */
+	hid = -1;
+	/* Try to open the file. */
+	if (append) {
+		hid = H5Fopen(outfile, H5F_ACC_RDWR, H5P_DEFAULT);
+	}
+	if (hid < 0) {
+		hid = H5Fcreate(outfile, H5F_ACC_TRUNC, H5P_DEFAULT, \
+		    H5P_DEFAULT);
+	}
+	if (hid < 0) hdferror("%s: Could not open file\n", outfile);
+
+	/*
+	 * Create dataset.
+	 */
+	for (i = 0; i < rank; i++)
+		hdims[i] = dims[i].size;
+	status = H5LTmake_dataset(hid, dataset, rank, hdims, h5typeof(dtype), data);
+	if (status < 0) hdferror("Could not create dataset \"%s\"\n", dataset);
+
+	H5Fclose(hid);
+}
+
+void
+ncwrite(const char *outfile, const char *filename, const char *dataset, \
+    int rank, struct dim dims[], enum dtype dtype, const void *data, int append)
+{
+	int i;
+	int ncid, varid;
+	int res;
+	int *dimids;
+	const char *name;
+	char tmpdimname[MAX_DIMNAME+1];
+	size_t size;
+
+	dimids = calloc(sizeof(int), rank);
+	if (dimids == NULL) error("%s\n", strerror(errno));
+
+	res = 1;
+	if (append) res = nc_open(outfile, NC_WRITE, &ncid);
+	if (res) {
+		res = nc_create(outfile, NC_NETCDF4|NC_CLOBBER, &ncid);
+		if (res) ncerror(outfile, res);
+	}
+
+	for (i = 0; i < rank; i++) {
+		name = dims[i].name;
+		size = dims[i].size;
+		if (!*name) {
+			snprintf(tmpdimname, sizeof(tmpdimname), "dim_%s_%d", dataset, i);
+			name = tmpdimname;
+		}
+		res = nc_def_dim(ncid, name, size, &dimids[i]);
+		if (res) {
+			error("%s: Dimension \"%s\" (%zd): %s\n",
+			    filename, name, size, nc_strerror(res));
+		}
+	}
+
+	res = nc_def_var(ncid, dataset, NC_DOUBLE, rank, dimids, &varid);
+	if (res) ncerror(outfile, res);
+
+	/*
+	res = nc_def_var_deflate(ncid, varid, 0, 1, 2);
+	if (res) ncerror(outfile, res);
+	*/
+
+	res = nc_enddef(ncid);
+	if (res) ncerror(outfile, res);
+
+	res = nc_put_var(ncid, varid, data);
+	if (res) ncerror(outfile, res);
+
+	res = nc_close(ncid);
+	if (res) ncerror(outfile, res);
+
+	free(dimids);
+}
+
+void
 import(const char *outfile, const char *filename, int append)
 {
 	int i;
@@ -224,15 +371,11 @@ import(const char *outfile, const char *filename, int append)
 	size_t dsize;
 	size_t size, expected_size;
 	char *tmp;
-	uint64_t *data;
+	uint8_t *data;
 	int rank;
-	int dims[MAXRANK];
+	struct dim dims[MAXRANK];
 	size_t block_size[MAXRANK];
 	enum dtype dtype;
-
-	hid_t hid;
-	hsize_t hdims[MAXRANK];
-	herr_t status;
 
 	/*
 	 * Determine dataset name.
@@ -264,7 +407,7 @@ import(const char *outfile, const char *filename, int append)
 	 */
 	block_size[rank-1] = 1;
 	for (i = rank-2; i >= 0; i--)
-		block_size[i] = block_size[i+1]*dims[i+1];
+		block_size[i] = block_size[i+1]*dims[i+1].size;
 
 	/*
 	 * Read data.
@@ -278,58 +421,43 @@ import(const char *outfile, const char *filename, int append)
 	fseek(fp, 0, SEEK_END);
 	size = ftell(fp);
 	/* Unlimited first dimension. */
-	if (dims[0] == -1 && size % (block_size[0]*dsize) != 0) {
+	if (dims[0].size == -1 && size % (block_size[0]*dsize) != 0) {
 		error("%s: Expected size to be multiple of %zu, but %zu found\n",
 		    filename, block_size[0]*dsize, size);
 	}
-	if (dims[0] != -1) {
-		expected_size = block_size[0]*dims[0]*dsize;
+	if (dims[0].size != -1) {
+		expected_size = block_size[0]*dims[0].size*dsize;
 		if (size != expected_size) {
 			error("%s: Expected size %zu, but %zu found\n",
 			    filename, expected_size, size);
 		}
 	}
 
-	 /* H5LTmake_dataset does not like empty datasets. */
+	if (dims[0].size == -1)
+		dims[0].size = size/block_size[0]/dsize;
+
+	 /* HDF does not like empty datasets. */
 	if (size == 0) return;
+
+	if (size % dsize != 0) {
+		error("%s: Invalid size %zu (multiple of %zu expected)\n",\
+		    filename, size, dsize);
+	}
 
 	/*
 	 * Memory-map data.
 	 */
-	data = mmap(NULL, size, PROT_READ, MAP_PRIVATE, fileno(fp), 0);
+	data = mmap(NULL, size, PROT_READ|PROT_WRITE, MAP_PRIVATE, fileno(fp), 0);
 	if (data == MAP_FAILED)
 		error("%s: mmap failed: %s\n", filename, strerror(errno));
 
-	/*
-	 * Turn off error handling.
-	 */
-	H5Eset_auto(H5E_DEFAULT, NULL, NULL);
-
-	/*
-	 * Open or create the file.
-	 */
-	hid = -1;
-	/* Try to open the file. */
-	if (append) {
-		hid = H5Fopen(outfile, H5F_ACC_RDWR, H5P_DEFAULT);
+	if (endswith(outfile, ".nc")) {
+		swap_endianness(data, size, dsize);
+		ncwrite(outfile, filename, dataset, rank, dims, dtype, data, append);
+	} else {
+		hdfwrite(outfile, dataset, rank, dims, dtype, data, append);
 	}
-	if (hid < 0) {
-		hid = H5Fcreate(outfile, H5F_ACC_TRUNC, H5P_DEFAULT, \
-		    H5P_DEFAULT);
-	}
-	if (hid < 0) hdferror("%s: Could not open file\n", outfile);
 
-	/*
-	 * Create dataset.
-	 */
-	for (i = 0; i < rank; i++)
-		hdims[i] = dims[i];
-	if (dims[0] == -1)
-		hdims[0] = size/block_size[0]/dsize;
-	status = H5LTmake_dataset(hid, dataset, rank, hdims, h5typeof(dtype), data);
-	if (status < 0) hdferror("Could not create dataset \"%s\"\n", dataset);
-
-	H5Fclose(hid);
 	munmap(data, size);
 	fclose(fp);
 }
