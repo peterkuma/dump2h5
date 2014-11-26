@@ -73,7 +73,7 @@ usage(void)
 {
 	fprintf(stderr, "Usage: %s [-a] [-o OUTFILE] FILE|DIR...\n", program_name);
 	fprintf(stderr, "       %s --help\n\n", program_name);
-	fprintf(stderr, "Import dump into HDF5 data file.\n\n");
+	fprintf(stderr, "Convert nc_dump files to a HDF5 product file.\n\n");
 	fprintf(stderr, "Try `%s --help' for more information.\n", program_name);
 }
 
