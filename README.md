@@ -21,7 +21,7 @@ On Ubuntu/Debian derived operating systems, install requirements with:
 
 Compile dump2h5 with:
 
-    h5cc -o dump2h5 -Wall main.c
+    h5cc -o dump2h5 -Wall main.c -lnetcdf
 
 Usage
 -----
