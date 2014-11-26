@@ -83,13 +83,13 @@ help(void)
 	printf("Usage: %s [-a] [-o OUTFILE] FILE|DIR...\n", program_name);
 	printf("       %s --help\n\n", program_name);
 	printf("Convert nc_dump files to a HDF5 product file.\n\n");
-	printf("Positional arguments:\n");
-	printf("  FILE               input file\n");
-	printf("  DIR                input directory\n");
+	printf("Positional arguments:\n\n");
+	printf("  FILE               Input file.\n");
+	printf("  DIR                Input directory.\n");
 	printf("\n");
-	printf("Optional arguments:\n");
-	printf("  -a                 append to output file\n");
-	printf("  -o OUTFILE         output file (default: data.h5)\n");
+	printf("Optional arguments:\n\n");
+	printf("  -a                 Append to output file.\n");
+	printf("  -o OUTFILE         Output file (default: `data.h5`).\n");
 	printf("\n");
 	printf("Report bugs to <peterkuma@waveland.org>.\n");
 }
