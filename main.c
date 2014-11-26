@@ -82,7 +82,7 @@ help(void)
 {
 	printf("Usage: %s [-a] [-o OUTFILE] FILE|DIR...\n", program_name);
 	printf("       %s --help\n\n", program_name);
-	printf("Import dump into HDF5 data file.\n\n");
+	printf("Convert nc_dump files to a HDF5 product file.\n\n");
 	printf("Positional arguments:\n");
 	printf("  FILE               input file\n");
 	printf("  DIR                input directory\n");
