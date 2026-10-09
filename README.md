@@ -74,3 +74,9 @@ Data type can be one of:
 
 File `<dataset>` contains binary raw data packed without padding. Big endian
 byte order is assumed.
+
+License
+-------
+
+This software is available under the terms of the MIT license (see `LICENSE.md`
+for more information).
